@@ -23,3 +23,13 @@ Thumbs.db
 .vscode/
 .idea/
 web-app/gunicorn.ctl
+
+# Local Scripts & Artifacts
+just.py
+angara_afk_drission.py
+angara_afk.user.js
+vnc_*.png
+web-app/downloaded_files/
+web-app/debug_artifacts/
+web-app/pw_debug_artifacts/
+web-app/screenshots/
