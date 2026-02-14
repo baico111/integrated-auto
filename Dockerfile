@@ -74,7 +74,7 @@ RUN apt-get update && \
 # 3. Python & 开发环境
 RUN apt-get update && \
   apt-get install -y --no-install-recommends --fix-missing \
-  python3 python3-pip python3-dev python3-gi python3-xdg python3-websockify \
+  python3 python3-pip python3-dev python3-tk python3-gi python3-xdg python3-websockify \
   gir1.2-gtk-3.0 pkg-config gcc g++ make libffi-dev libssl-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 

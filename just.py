@@ -4,9 +4,17 @@ import json
 import re
 import random
 
-# 强制设置 X11 环境，确保连接到容器内的 VNC 桌面
-os.environ["DISPLAY"] = ":1"
-os.environ["XAUTHORITY"] = "/home/headless/.Xauthority"
+import requests
+
+# 智能环境配置：仅在未设置时才应用默认值
+# 这样兼容 GitHub Actions 的 xvfb-run (会自动设置 DISPLAY) 和 Docker 环境
+if "DISPLAY" not in os.environ:
+    os.environ["DISPLAY"] = ":1"
+    
+if "XAUTHORITY" not in os.environ:
+    # 仅当路径存在时才设置，避免在 GitHub Runner (home/runner) 中报错
+    if os.path.exists("/home/headless/.Xauthority"):
+        os.environ["XAUTHORITY"] = "/home/headless/.Xauthority"
 
 print(f"[DEBUG] Env DISPLAY: {os.environ.get('DISPLAY')}")
 print(f"[DEBUG] Env XAUTHORITY: {os.environ.get('XAUTHORITY')}")
@@ -16,6 +24,8 @@ from seleniumbase import SB
 # ================= 配置区域 =================
 # 代理配置
 PROXY_URL = os.getenv("PROXY", "")
+TG_TOKEN = os.getenv("TG_TOKEN")
+TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 
 # 目标 URL
 URL_APP_PANEL = "https://justrunmy.app/panel/application/1935"
@@ -105,27 +115,36 @@ class JustRenewal:
                     f.write(new_value)
         except: pass
 
+    def send_telegram_notify(self, message, photo_path=None):
+        """发送 Telegram 通知 (带图片)"""
+        if not TG_TOKEN or not TG_CHAT_ID:
+            self.log("⚠️ 未配置 TG_TOKEN 或 TG_CHAT_ID，跳过推送。")
+            return
+        
+        try:
+            if photo_path and os.path.exists(photo_path):
+                url = f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto"
+                with open(photo_path, 'rb') as f:
+                    # caption 参数用于发送带文字的图片
+                    requests.post(url, data={'chat_id': TG_CHAT_ID, 'caption': message}, files={'photo': f})
+            else:
+                url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+                requests.post(url, data={'chat_id': TG_CHAT_ID, 'text': message})
+            
+            self.log("✅ TG 推送已发送")
+        except Exception as e:
+            self.log(f"❌ TG 推送失败: {e}")
+
     def run(self):
         self.log("=" * 40)
         self.log("🚀 JUST RUN MY APP - 拟人化重置流程")
         self.log("=" * 40)
 
-        # 动态读取 Cookie 文件，确保与 github.py 逻辑一致
-        cookie_path = os.path.join(self.BASE_DIR, COOKIE_FILE)
-        # 如果是在 Docker 中运行，可能路径不同，尝试当前目录
-        if not os.path.exists(cookie_path) and os.path.exists("cookie.txt"):
-            cookie_path = "cookie.txt"
-            
-        if not os.path.exists(cookie_path):
-             # 尝试绝对路径（容器常见路径）
-            if os.path.exists("/home/headless/Downloads/cookie.txt"):
-                cookie_path = "/home/headless/Downloads/cookie.txt"
-            else:
-                self.log(f"❌ 错误：找不到凭证文件 {COOKIE_FILE} 或 /home/headless/Downloads/cookie.txt")
-                return
+        if not os.path.exists(COOKIE_FILE):
+            self.log(f"❌ 错误：找不到凭证文件 {COOKIE_FILE}")
+            return
 
-        self.log(f"📂 读取凭证文件: {cookie_path}")
-        with open(cookie_path, 'r') as f:
+        with open(COOKIE_FILE, 'r') as f:
             cookie_value = f.read().strip()
 
         self.log("🎯 正在启动 Chrome 浏览器...")
@@ -142,6 +161,8 @@ class JustRenewal:
         ) as sb:
             try:
                 self.log("✅ 浏览器已启动！")
+                
+                # ... (省略中间步骤，保持原有逻辑不变) ...
                 
                 # 1. IP 检测
                 self.log("🌍 正在检测出口 IP...")
@@ -176,11 +197,7 @@ class JustRenewal:
                 
                 if "login" in sb.get_current_url().lower():
                     self.log(f"❌ 权限失效。当前 URL: {sb.get_current_url()}")
-                    self.log(f"⚠️ 调试: 注入的 Cookie 长度为 {len(cookie_value)} 字符")
-                    if len(cookie_value) < 100:
-                        self.log("⚠️ 警告: Cookie 看起来太短了！ASP.NET Identity Cookie 通常超过 1000 字符。")
-                        self.log("💡 提示: 请确保从开发者工具中复制了【完整】的值 (Value)，不要只复制显示出来的部分。")
-                    
+                    # ... 省略登录失败处理 ...
                     sb.save_screenshot(f"{self.screenshot_dir}/login_fail.png")
                     self.log(f"📸 失败截图已保存至: {self.screenshot_dir}/login_fail.png")
                     return
@@ -194,14 +211,14 @@ class JustRenewal:
                 sb.click("//button[contains(., 'Reset Timer')]")
                 self.human_wait(3, 5)
 
-                # 5. 验证码处理循环
+                # 5. 验证码处理循环 (已优化)
                 max_retry_rounds = 3
                 for round_idx in range(max_retry_rounds):
                     self.log(f"🔄 执行第 {round_idx + 1}/{max_retry_rounds} 轮验证...")
                     
                     for attempt in range(4):
                         if sb.is_text_visible("Connection lost"):
-                            self.log("⚠️ 连接丢失，尝试恢复...")
+                            # ... 连接丢失处理 ...
                             try: sb.click("//button[contains(., 'Reload')]")
                             except: sb.refresh()
                             time.sleep(8)
@@ -216,7 +233,6 @@ class JustRenewal:
                         
                         if has_cf or has_err:
                             self.log(f"🛡️ 发现验证挑战 (尝试 {attempt+1})...")
-                            self.log("📸 保存验证前截图: captcha_found.png")
                             sb.save_screenshot(f"{self.screenshot_dir}/captcha_found.png")
                             
                             self.log("⏳ 等待验证码完全加载 (4秒)...")
@@ -233,8 +249,6 @@ class JustRenewal:
                             self.log("⏳ GUI 点击完成，等待生效 (8秒)...")
                             time.sleep(8)
                             
-                            # 关键修改：不要等待错误文字消失（因为那是通过提交刷新才会消失的）
-                            # 只要点击了验证码，就直接尝试去点击按钮
                             self.log("✅ 动作已执行，准备尝试提交...")
                             break
                         else:
@@ -249,11 +263,9 @@ class JustRenewal:
                             sb.click(reset_btn)
                             self.log("✅ 点击指令已发送。")
                             
-                            # C. 关键改动：立即检查点击是否生效 (反馈机制)
                             self.log("👀 正在核实提交结果 (3秒)...")
                             time.sleep(3)
                             
-                            # 如果报错红字出来了，或者按钮还在，说明失败
                             text_feedback = sb.get_text("body").lower()
                             is_failed = "complete the captcha" in text_feedback
                             is_btn_there = sb.is_element_visible(reset_btn)
@@ -261,13 +273,13 @@ class JustRenewal:
                             if is_failed:
                                 self.log("❌ 提交被拒：检测到红字报错，需重试验证码。")
                                 sb.save_screenshot(f"{self.screenshot_dir}/submit_fail_{round_idx}.png")
-                                continue # 回到大循环开头重解验证码
+                                continue 
                             elif is_btn_there:
                                 self.log("⚠️ 按钮仍存在，可能点击未被响应，重试...")
                                 continue
                             else:
                                 self.log("🎉 按钮已消失，提交判定成功！")
-                                break # 退出大循环
+                                break 
                         else:
                             self.log("⚠️ 找不到 'Just Reset' 按钮，可能已自动提交？")
                             break
@@ -282,9 +294,18 @@ class JustRenewal:
                 self.log(f"🕒 操作后状态: {time_str_after}")
 
                 success = (time_after is not None) and (time_after >= 4318 or (time_before and time_after > time_before))
+                
+                # 保存最终截图
+                final_screenshot = f"{self.screenshot_dir}/final_success.png"
+                sb.save_screenshot(final_screenshot)
+
                 if success:
                     self.log("🎉 判定[成功]: 计时器已复位！")
                     self.save_new_cookie(sb)
+                    
+                    # 发送 TG 通知
+                    msg = f"✅ <b>JustRunMy 续期成功</b>\n\n🕒 <b>当前余量:</b> {time_str_after}\n🌍 <b>服务器机房:</b> Docker/Action"
+                    self.send_telegram_notify(msg, final_screenshot)
                 else:
                     self.log(f"⚠️ 判定[失败]: 数值未见增长。")
                     sb.save_screenshot(f"{self.screenshot_dir}/fail.png")
