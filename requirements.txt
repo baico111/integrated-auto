@@ -1,5 +1,0 @@
-requests
-seleniumbase
-loguru
-python-dotenv
-streamlit
