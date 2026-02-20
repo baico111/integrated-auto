@@ -1,3 +1,4 @@
+# --- 你原本清单中的库 ---
 Flask>=3.0.0
 Flask-Login>=0.6.3
 Flask-SQLAlchemy>=3.1.1
@@ -11,3 +12,6 @@ gunicorn>=22.0.0
 pytz
 pymysql
 seleniumbase>=4.28.0
+loguru>=0.7.0
+python-dotenv
+pyvirtualdisplay
