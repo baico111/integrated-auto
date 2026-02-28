@@ -15,3 +15,7 @@ seleniumbase>=4.28.0
 loguru>=0.7.0
 python-dotenv
 pyvirtualdisplay
+selenium-wire
+telethon
+pyvirtualdisplay
+undetected-chromedriver
